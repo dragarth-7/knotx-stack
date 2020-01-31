@@ -1,0 +1,59 @@
+package io.knotx.stack.functional;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import com.github.tomakehurst.wiremock.WireMockServer;
+import io.knotx.junit5.KnotxApplyConfiguration;
+import io.knotx.junit5.KnotxExtension;
+import io.knotx.junit5.RandomPort;
+import io.knotx.junit5.wiremock.ClasspathResourcesMockServer;
+import io.knotx.stack.KnotxServerTester;
+import io.vertx.junit5.VertxTestContext;
+import io.vertx.reactivex.core.Vertx;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestInstance.Lifecycle;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+@ExtendWith(KnotxExtension.class)
+@TestInstance(Lifecycle.PER_CLASS)
+public class KnotxFragmentsDebugDataWithHandlebarsTest {
+
+  @ClasspathResourcesMockServer
+  private WireMockServer mockService;
+
+  @ClasspathResourcesMockServer
+  private WireMockServer delayedServiceServer;
+
+  @AfterEach
+  void tearDown() {
+    delayedServiceServer.stop();
+  }
+
+  @Test
+  @DisplayName("Should return page with valid debug data")
+  @KnotxApplyConfiguration({"conf/application.conf",
+      "scenarios/knotx-fragments-debug-data/mocks.conf",
+      "scenarios/knotx-fragments-debug-data/tasks.conf"})
+  void requestPage(VertxTestContext testContext, Vertx vertx,
+      @RandomPort Integer delayedServicePort, @RandomPort Integer globalServerPort) {
+    delayedServiceServer = new WireMockServer(delayedServicePort);
+    delayedServiceServer.stubFor(get(urlEqualTo("/mock/scenario/delayed")).willReturn(
+        aResponse()
+            .withStatus(200)
+            .withFixedDelay(200)));
+    delayedServiceServer.start();
+
+    KnotxServerTester serverTester = KnotxServerTester.defaultInstance(globalServerPort);
+    serverTester.testGet(testContext, vertx,
+        "/content/paymentsWithHandlebars.html?debug=true", resp -> {
+          assertNotNull(resp.body());
+        });
+  }
+}
